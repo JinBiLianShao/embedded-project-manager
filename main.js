@@ -1,9 +1,18 @@
 const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 
 let mainWindow;
 const dataPath = path.join(app.getPath('userData'), 'data.json');
+const filesPath = path.join(app.getPath('userData'), 'files');
+
+// 确保文件目录存在
+function ensureFilesDirectory() {
+  if (!fs.existsSync(filesPath)) {
+    fs.mkdirSync(filesPath, { recursive: true });
+  }
+}
 
 // 初始化数据
 const initData = () => ({
@@ -52,6 +61,7 @@ function createWindow() {
 
 app.whenReady().then(() => {
   ensureDataFile();
+  ensureFilesDirectory();
   createWindow();
 
   app.on('activate', () => {
@@ -103,7 +113,6 @@ ipcMain.handle('export-data', async (event, data, format) => {
       if (format === 'json') {
         content = JSON.stringify(data, null, 2);
       } else if (format === 'csv') {
-        // CSV 格式的数据
         content = data;
       }
       fs.writeFileSync(result.filePath, content);
@@ -133,6 +142,136 @@ ipcMain.handle('import-data', async () => {
     return { success: false, canceled: true };
   } catch (error) {
     console.error('Error importing data:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// 选择文件
+ipcMain.handle('select-file', async (event, fileType) => {
+  try {
+    let filters = [];
+    if (fileType === 'binary') {
+      filters = [
+        { name: 'Binary Files', extensions: ['bin', 'hex', 'elf', '*'] },
+        { name: 'All Files', extensions: ['*'] }
+      ];
+    } else if (fileType === 'config') {
+      filters = [
+        { name: 'Config Files', extensions: ['json', 'xml', 'ini', 'conf', 'cfg', 'txt'] },
+        { name: 'All Files', extensions: ['*'] }
+      ];
+    }
+
+    const result = await dialog.showOpenDialog(mainWindow, {
+      title: '选择文件',
+      filters: filters,
+      properties: ['openFile']
+    });
+
+    if (!result.canceled && result.filePaths.length > 0) {
+      const filePath = result.filePaths[0];
+      const fileName = path.basename(filePath);
+      const fileBuffer = fs.readFileSync(filePath);
+
+      // 计算MD5
+      const md5 = crypto.createHash('md5').update(fileBuffer).digest('hex');
+
+      return {
+        success: true,
+        fileName,
+        fileSize: fileBuffer.length,
+        md5,
+        tempPath: filePath
+      };
+    }
+    return { success: false, canceled: true };
+  } catch (error) {
+    console.error('Error selecting file:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// 保存文件
+ipcMain.handle('save-file', async (event, sourcePath, projectId, versionId, fileType) => {
+  try {
+    const projectDir = path.join(filesPath, projectId.toString());
+    const versionDir = path.join(projectDir, versionId.toString());
+
+    if (!fs.existsSync(versionDir)) {
+      fs.mkdirSync(versionDir, { recursive: true });
+    }
+
+    const fileName = path.basename(sourcePath);
+    const destPath = path.join(versionDir, `${fileType}_${fileName}`);
+
+    fs.copyFileSync(sourcePath, destPath);
+
+    return {
+      success: true,
+      relativePath: path.relative(filesPath, destPath),
+      fileName
+    };
+  } catch (error) {
+    console.error('Error saving file:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// 打开文件
+ipcMain.handle('open-file', async (event, relativePath) => {
+  try {
+    const fullPath = path.join(filesPath, relativePath);
+
+    if (!fs.existsSync(fullPath)) {
+      return { success: false, error: '文件不存在' };
+    }
+
+    const { shell } = require('electron');
+    await shell.openPath(fullPath);
+
+    return { success: true };
+  } catch (error) {
+    console.error('Error opening file:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// 删除版本文件
+ipcMain.handle('delete-version-files', async (event, projectId, versionId) => {
+  try {
+    const versionDir = path.join(filesPath, projectId.toString(), versionId.toString());
+
+    if (fs.existsSync(versionDir)) {
+      fs.rmSync(versionDir, { recursive: true, force: true });
+    }
+
+    return { success: true };
+  } catch (error) {
+    console.error('Error deleting version files:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// 获取文件信息
+ipcMain.handle('get-file-info', async (event, relativePath) => {
+  try {
+    const fullPath = path.join(filesPath, relativePath);
+
+    if (!fs.existsSync(fullPath)) {
+      return { success: false, error: '文件不存在' };
+    }
+
+    const stats = fs.statSync(fullPath);
+    const fileName = path.basename(fullPath);
+
+    return {
+      success: true,
+      fileName,
+      fileSize: stats.size,
+      exists: true
+    };
+  } catch (error) {
+    console.error('Error getting file info:', error);
     return { success: false, error: error.message };
   }
 });
