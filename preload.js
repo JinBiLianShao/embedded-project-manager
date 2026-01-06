@@ -11,6 +11,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   saveFile: (sourcePath, projectId, versionId, fileType) =>
       ipcRenderer.invoke('save-file', sourcePath, projectId, versionId, fileType),
   openFile: (relativePath) => ipcRenderer.invoke('open-file', relativePath),
+  openFileFolder: (relativePath) => ipcRenderer.invoke('open-file-folder', relativePath),
   deleteVersionFiles: (projectId, versionId) =>
       ipcRenderer.invoke('delete-version-files', projectId, versionId),
   getFileInfo: (relativePath) => ipcRenderer.invoke('get-file-info', relativePath)

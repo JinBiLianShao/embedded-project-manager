@@ -236,6 +236,28 @@ ipcMain.handle('open-file', async (event, relativePath) => {
   }
 });
 
+// 打开文件所在文件夹
+ipcMain.handle('open-file-folder', async (event, relativePath) => {
+  try {
+    const fullPath = path.join(filesPath, relativePath);
+
+    if (!fs.existsSync(fullPath)) {
+      return { success: false, error: '文件不存在' };
+    }
+
+    const { shell } = require('electron');
+    const folderPath = path.dirname(fullPath);
+    await shell.openPath(folderPath);
+
+    return { success: true };
+  } catch (error) {
+    console.error('Error opening folder:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+
+
 // 删除版本文件
 ipcMain.handle('delete-version-files', async (event, projectId, versionId) => {
   try {
