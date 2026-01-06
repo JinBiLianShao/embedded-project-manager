@@ -120,11 +120,14 @@ input, textarea, select, [contenteditable="true"] {
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+  pointer-events: none;
 }
 
 .btn-primary {
@@ -206,12 +209,14 @@ input, textarea, select, [contenteditable="true"] {
   transition: border-color 0.2s;
   user-select: auto !important;
   -webkit-user-select: auto !important;
+  cursor: text;
 }
 
 .form-input:focus,
 .form-textarea:focus,
 .form-select:focus {
-  outline: none;
+  outline: 2px solid #2563eb;
+  outline-offset: -1px;
   border-color: #2563eb;
   box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
 }
@@ -290,6 +295,12 @@ input, textarea, select, [contenteditable="true"] {
   text-decoration: underline;
 }
 
+.file-link:focus {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
 /* 模态框样式 */
 .modal-overlay {
   position: fixed;
@@ -314,6 +325,10 @@ input, textarea, select, [contenteditable="true"] {
   padding: 1.5rem;
   pointer-events: auto;
   animation: slideUp 0.3s ease-out;
+}
+
+.modal > * {
+  pointer-events: auto;
 }
 
 .modal-header {

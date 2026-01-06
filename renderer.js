@@ -157,14 +157,18 @@ const App = () => {
             alert('需要管理员权限');
             return;
         }
-        if (confirm('确定要删除这个项目吗？')) {
-            const newData = {...data, projects: data.projects.filter(p => p.id !== projectId)};
-            saveData(newData);
-            if (selectedProject && selectedProject.id === projectId) {
-                setSelectedProject(null);
-                setCurrentView('projects');
+
+        // 使用requestAnimationFrame来延迟删除操作，确保焦点不会丢失
+        requestAnimationFrame(() => {
+            if (confirm('确定要删除这个项目吗？')) {
+                const newData = {...data, projects: data.projects.filter(p => p.id !== projectId)};
+                saveData(newData);
+                if (selectedProject && selectedProject.id === projectId) {
+                    setSelectedProject(null);
+                    setCurrentView('projects');
+                }
             }
-        }
+        });
     }, [data, isLoggedIn, selectedProject, saveData]);
 
     const addVersion = useCallback(async (version) => {
@@ -280,23 +284,29 @@ const App = () => {
             alert('需要管理员权限');
             return;
         }
-        if (confirm('确定要删除这个版本吗？')) {
-            // 删除文件
-            await window.electronAPI.deleteVersionFiles(selectedProject.id, versionId);
 
-            const newData = {
-                ...data,
-                projects: data.projects.map(p => {
-                    if (p.id === selectedProject.id) {
-                        return {...p, versions: p.versions.filter(v => v.id !== versionId)};
-                    }
-                    return p;
-                })
-            };
-            saveData(newData);
-            const updatedProject = newData.projects.find(p => p.id === selectedProject.id);
-            setSelectedProject(updatedProject);
-        }
+        requestAnimationFrame(() => {
+            if (confirm('确定要删除这个版本吗？')) {
+                // 使用立即执行函数来执行删除
+                (async () => {
+                    // 删除文件
+                    await window.electronAPI.deleteVersionFiles(selectedProject.id, versionId);
+
+                    const newData = {
+                        ...data,
+                        projects: data.projects.map(p => {
+                            if (p.id === selectedProject.id) {
+                                return {...p, versions: p.versions.filter(v => v.id !== versionId)};
+                            }
+                            return p;
+                        })
+                    };
+                    saveData(newData);
+                    const updatedProject = newData.projects.find(p => p.id === selectedProject.id);
+                    setSelectedProject(updatedProject);
+                })();
+            }
+        });
     }, [data, isLoggedIn, selectedProject, saveData]);
 
     const addTestRecord = useCallback((record) => {
@@ -320,20 +330,23 @@ const App = () => {
             alert('需要管理员权限');
             return;
         }
-        if (confirm('确定要删除这条测试记录吗？')) {
-            const newData = {
-                ...data,
-                projects: data.projects.map(p => {
-                    if (p.id === selectedProject.id) {
-                        return {...p, testRecords: p.testRecords.filter(r => r.id !== recordId)};
-                    }
-                    return p;
-                })
-            };
-            saveData(newData);
-            const updatedProject = newData.projects.find(p => p.id === selectedProject.id);
-            setSelectedProject(updatedProject);
-        }
+
+        requestAnimationFrame(() => {
+            if (confirm('确定要删除这条测试记录吗？')) {
+                const newData = {
+                    ...data,
+                    projects: data.projects.map(p => {
+                        if (p.id === selectedProject.id) {
+                            return {...p, testRecords: p.testRecords.filter(r => r.id !== recordId)};
+                        }
+                        return p;
+                    })
+                };
+                saveData(newData);
+                const updatedProject = newData.projects.find(p => p.id === selectedProject.id);
+                setSelectedProject(updatedProject);
+            }
+        });
     }, [data, isLoggedIn, selectedProject, saveData]);
 
     const exportData = async (format) => {
@@ -550,6 +563,13 @@ const ProjectList = memo(({projects, onSelect, onAdd, onEdit, onDelete, isLogged
         );
     }, [projects, debouncedSearchTerm]);
 
+    // 处理删除点击事件
+    const handleDeleteClick = useCallback((e, projectId) => {
+        e.stopPropagation();
+        e.preventDefault(); // 防止默认行为
+        onDelete(projectId);
+    }, [onDelete]);
+
     return (
         <div>
             <div className="flex justify-between items-center mb-6">
@@ -587,6 +607,7 @@ const ProjectList = memo(({projects, onSelect, onAdd, onEdit, onDelete, isLogged
                                 <button
                                     onClick={(e) => {
                                         e.stopPropagation();
+                                        e.preventDefault();
                                         onEdit(project);
                                     }}
                                     className="btn btn-secondary"
@@ -596,10 +617,7 @@ const ProjectList = memo(({projects, onSelect, onAdd, onEdit, onDelete, isLogged
                                     <span>编辑</span>
                                 </button>
                                 <button
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        onDelete(project.id);
-                                    }}
+                                    onClick={(e) => handleDeleteClick(e, project.id)}
                                     className="btn btn-danger"
                                     style={{flex: 1}}
                                 >
@@ -684,6 +702,13 @@ const VersionsTab = memo(({versions, onAdd, onEdit, onDelete, onExport, isLogged
         }
     };
 
+    // 处理删除点击
+    const handleDeleteClick = useCallback((e, versionId) => {
+        e.preventDefault();
+        e.stopPropagation();
+        onDelete(versionId);
+    }, [onDelete]);
+
     return (
         <div>
             <div className="flex justify-between items-center mb-4">
@@ -763,10 +788,20 @@ const VersionsTab = memo(({versions, onAdd, onEdit, onDelete, onExport, isLogged
                         </div>
                         {isLoggedIn && (
                             <div className="list-item-actions">
-                                <button onClick={() => onEdit(version)} className="btn btn-icon btn-secondary">
+                                <button
+                                    onClick={(e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        onEdit(version);
+                                    }}
+                                    className="btn btn-icon btn-secondary"
+                                >
                                     <Icon name="edit" size={18}/>
                                 </button>
-                                <button onClick={() => onDelete(version.id)} className="btn btn-icon btn-danger">
+                                <button
+                                    onClick={(e) => handleDeleteClick(e, version.id)}
+                                    className="btn btn-icon btn-danger"
+                                >
                                     <Icon name="trash" size={18}/>
                                 </button>
                             </div>
@@ -815,6 +850,13 @@ const TestRecordsTab = memo(({records, onAdd, onDelete, isLoggedIn, selectedDate
         newDate.setMonth(newDate.getMonth() + offset);
         setCurrentMonth(newDate);
     };
+
+    // 处理删除点击
+    const handleDeleteClick = useCallback((e, recordId) => {
+        e.preventDefault();
+        e.stopPropagation();
+        onDelete(recordId);
+    }, [onDelete]);
 
     return (
         <div>
@@ -893,7 +935,10 @@ const TestRecordsTab = memo(({records, onAdd, onDelete, isLoggedIn, selectedDate
                                 {record.notes && <p className="text-sm text-gray-600">{record.notes}</p>}
                             </div>
                             {isLoggedIn && (
-                                <button onClick={() => onDelete(record.id)} className="btn btn-icon btn-danger">
+                                <button
+                                    onClick={(e) => handleDeleteClick(e, record.id)}
+                                    className="btn btn-icon btn-danger"
+                                >
                                     <Icon name="trash" size={18}/>
                                 </button>
                             )}
@@ -1009,37 +1054,73 @@ const Modal = ({type, item, projectId, onSave, onClose}) => {
     const [isUploading, setIsUploading] = useState(false);
     const modalRef = useRef(null);
     const firstInputRef = useRef(null);
+    const backdropRef = useRef(null);
 
-    // 添加焦点管理
+    // 修复焦点管理
     useEffect(() => {
         if (modalRef.current) {
-            // 模态框显示时阻止背景滚动
+            // 保存当前活动元素
+            const activeElement = document.activeElement;
+
+            // 阻止背景滚动
             document.body.style.overflow = 'hidden';
 
-            // 聚焦第一个输入框
-            setTimeout(() => {
+            // 使用setTimeout确保DOM完全渲染
+            const focusTimer = setTimeout(() => {
                 if (firstInputRef.current) {
                     firstInputRef.current.focus();
+                    // 选中文本（如果是编辑）
+                    if (type.includes('edit') && firstInputRef.current.select) {
+                        firstInputRef.current.select();
+                    }
                 }
-            }, 100);
-        }
+            }, 50);
 
-        return () => {
-            document.body.style.overflow = 'auto';
-        };
-    }, []);
+            return () => {
+                clearTimeout(focusTimer);
+                document.body.style.overflow = 'auto';
+
+                // 恢复之前的焦点
+                if (activeElement && activeElement.focus) {
+                    requestAnimationFrame(() => {
+                        activeElement.focus();
+                    });
+                }
+            };
+        }
+    }, [type]);
 
     // 处理ESC键关闭
     useEffect(() => {
         const handleEscape = (e) => {
-            if (e.key === 'Escape') {
+            if (e.key === 'Escape' && !isUploading) {
                 onClose();
             }
         };
 
         window.addEventListener('keydown', handleEscape);
         return () => window.removeEventListener('keydown', handleEscape);
-    }, [onClose]);
+    }, [onClose, isUploading]);
+
+    // 处理点击背景关闭
+    useEffect(() => {
+        const handleBackdropClick = (e) => {
+            if (backdropRef.current && e.target === backdropRef.current && !isUploading) {
+                onClose();
+            }
+        };
+
+        const backdrop = backdropRef.current;
+        if (backdrop) {
+            backdrop.addEventListener('click', handleBackdropClick);
+        }
+
+        return () => {
+            if (backdrop) {
+                backdrop.removeEventListener('click', handleBackdropClick);
+            }
+        };
+    }, [onClose, isUploading]);
 
     const handleFileSelect = async (fileType) => {
         setIsUploading(true);
@@ -1112,16 +1193,21 @@ const Modal = ({type, item, projectId, onSave, onClose}) => {
     };
 
     return (
-        <div className="modal-overlay" onClick={onClose}>
+        <div className="modal-overlay" ref={backdropRef}>
             <div
                 className="modal"
                 style={{maxWidth: '600px'}}
-                onClick={(e) => e.stopPropagation()}
                 ref={modalRef}
+                onClick={(e) => e.stopPropagation()}
             >
                 <div className="modal-header">
                     <h3 className="modal-title">{getTitle()}</h3>
-                    <button onClick={onClose} className="btn btn-icon btn-secondary">
+                    <button
+                        onClick={onClose}
+                        className="btn btn-icon btn-secondary"
+                        disabled={isUploading}
+                        aria-label="关闭"
+                    >
                         <Icon name="x" size={20}/>
                     </button>
                 </div>
@@ -1137,6 +1223,7 @@ const Modal = ({type, item, projectId, onSave, onClose}) => {
                                 onChange={(e) => setFormData({...formData, name: e.target.value})}
                                 className="form-input"
                                 required
+                                disabled={isUploading}
                             />
                         </div>
                         <div className="form-group">
@@ -1145,6 +1232,7 @@ const Modal = ({type, item, projectId, onSave, onClose}) => {
                                 value={formData.description}
                                 onChange={(e) => setFormData({...formData, description: e.target.value})}
                                 className="form-textarea"
+                                disabled={isUploading}
                             />
                         </div>
                     </>
@@ -1162,6 +1250,7 @@ const Modal = ({type, item, projectId, onSave, onClose}) => {
                                 className="form-input"
                                 placeholder="v1.0.0"
                                 required
+                                disabled={isUploading}
                             />
                         </div>
                         <div className="form-group">
@@ -1172,6 +1261,7 @@ const Modal = ({type, item, projectId, onSave, onClose}) => {
                                 onChange={(e) => setFormData({...formData, buildTime: e.target.value})}
                                 className="form-input"
                                 required
+                                disabled={isUploading}
                             />
                         </div>
 
@@ -1196,6 +1286,8 @@ const Modal = ({type, item, projectId, onSave, onClose}) => {
                                     <button
                                         onClick={() => handleRemoveFile('binary')}
                                         className="btn btn-icon btn-danger"
+                                        disabled={isUploading}
+                                        aria-label="移除文件"
                                     >
                                         <Icon name="x" size={16}/>
                                     </button>
@@ -1228,6 +1320,8 @@ const Modal = ({type, item, projectId, onSave, onClose}) => {
                                     <button
                                         onClick={() => handleRemoveFile('config')}
                                         className="btn btn-icon btn-danger"
+                                        disabled={isUploading}
+                                        aria-label="移除文件"
                                     >
                                         <Icon name="x" size={16}/>
                                     </button>
@@ -1251,6 +1345,7 @@ const Modal = ({type, item, projectId, onSave, onClose}) => {
                                 onChange={(e) => setFormData({...formData, changelog: e.target.value})}
                                 className="form-textarea"
                                 placeholder="描述本版本的主要变更内容"
+                                disabled={isUploading}
                             />
                         </div>
                     </>
@@ -1267,6 +1362,7 @@ const Modal = ({type, item, projectId, onSave, onClose}) => {
                                 onChange={(e) => setFormData({...formData, testDate: e.target.value})}
                                 className="form-input"
                                 required
+                                disabled={isUploading}
                             />
                         </div>
                         <div className="form-group">
@@ -1277,6 +1373,7 @@ const Modal = ({type, item, projectId, onSave, onClose}) => {
                                 onChange={(e) => setFormData({...formData, tester: e.target.value})}
                                 className="form-input"
                                 required
+                                disabled={isUploading}
                             />
                         </div>
                         <div className="form-group">
@@ -1285,6 +1382,7 @@ const Modal = ({type, item, projectId, onSave, onClose}) => {
                                 value={formData.result}
                                 onChange={(e) => setFormData({...formData, result: e.target.value})}
                                 className="form-select"
+                                disabled={isUploading}
                             >
                                 <option value="通过">通过</option>
                                 <option value="失败">失败</option>
@@ -1297,17 +1395,26 @@ const Modal = ({type, item, projectId, onSave, onClose}) => {
                                 onChange={(e) => setFormData({...formData, notes: e.target.value})}
                                 className="form-textarea"
                                 placeholder="测试详情、发现的问题等"
+                                disabled={isUploading}
                             />
                         </div>
                     </>
                 )}
 
                 <div className="modal-footer">
-                    <button onClick={handleSubmit} className="btn btn-primary" disabled={isUploading}>
+                    <button
+                        onClick={handleSubmit}
+                        className="btn btn-primary"
+                        disabled={isUploading}
+                    >
                         <Icon name="save"/>
                         <span>{isUploading ? '处理中...' : '保存'}</span>
                     </button>
-                    <button onClick={onClose} className="btn btn-secondary">
+                    <button
+                        onClick={onClose}
+                        className="btn btn-secondary"
+                        disabled={isUploading}
+                    >
                         取消
                     </button>
                 </div>
