@@ -1,4 +1,4 @@
-const {useState, useEffect, useMemo, useCallback, memo} = React;
+const {useState, useEffect, useMemo, useCallback, memo, useRef} = React;
 
 // 工具函数：格式化文件大小
 const formatFileSize = (bytes) => {
@@ -49,6 +49,7 @@ const Icon = memo(({name, size = 20}) => {
         fileText: <path
             d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z M14 2v6h6 M16 13H8 M16 17H8 M10 9H8"/>,
         folder: <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>,
+        search: <path d="M11 17a6 6 0 100-12 6 6 0 000 12zM21 21l-4.35-4.35"/>,
     };
 
     return (
@@ -75,25 +76,36 @@ const App = () => {
     const [modalType, setModalType] = useState('');
     const [editingItem, setEditingItem] = useState(null);
     const [selectedDate, setSelectedDate] = useState(new Date());
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(null);
 
     useEffect(() => {
         loadData();
     }, []);
 
     const loadData = async () => {
-        const loadedData = await window.electronAPI.loadData();
-        setData(loadedData);
-        setIsLoggedIn(!!loadedData.settings.currentUser);
+        try {
+            setLoading(true);
+            setError(null);
+            const loadedData = await window.electronAPI.loadData();
+            setData(loadedData);
+            setIsLoggedIn(!!loadedData.settings.currentUser);
+        } catch (err) {
+            console.error('加载数据失败:', err);
+            setError('加载数据失败，请重试');
+        } finally {
+            setLoading(false);
+        }
     };
 
-    const saveData = async (newData) => {
+    const saveData = useCallback(async (newData) => {
         const result = await window.electronAPI.saveData(newData);
         if (result.success) {
             setData(newData);
         } else {
             alert('保存失败：' + result.error);
         }
-    };
+    }, []);
 
     const handleLogin = useCallback((username, password) => {
         const user = data.users[username];
@@ -105,7 +117,7 @@ const App = () => {
         } else {
             alert('用户名或密码错误');
         }
-    }, [data]);
+    }, [data, saveData]);
 
     const handleLogout = useCallback(() => {
         const newData = {...data, settings: {currentUser: null}};
@@ -113,7 +125,7 @@ const App = () => {
         setIsLoggedIn(false);
         setSelectedProject(null);
         setCurrentView('projects');
-    }, [data]);
+    }, [data, saveData]);
 
     const addProject = useCallback((project) => {
         const newProject = {
@@ -126,7 +138,7 @@ const App = () => {
         const newData = {...data, projects: [...data.projects, newProject]};
         saveData(newData);
         setShowModal(false);
-    }, [data]);
+    }, [data, saveData]);
 
     const updateProject = useCallback((projectId, updates) => {
         const newData = {
@@ -138,7 +150,7 @@ const App = () => {
             setSelectedProject({...selectedProject, ...updates});
         }
         setShowModal(false);
-    }, [data, selectedProject]);
+    }, [data, selectedProject, saveData]);
 
     const deleteProject = useCallback((projectId) => {
         if (!isLoggedIn) {
@@ -153,7 +165,7 @@ const App = () => {
                 setCurrentView('projects');
             }
         }
-    }, [data, isLoggedIn, selectedProject]);
+    }, [data, isLoggedIn, selectedProject, saveData]);
 
     const addVersion = useCallback(async (version) => {
         const versionId = Date.now();
@@ -206,7 +218,7 @@ const App = () => {
         const updatedProject = newData.projects.find(p => p.id === selectedProject.id);
         setSelectedProject(updatedProject);
         setShowModal(false);
-    }, [data, selectedProject]);
+    }, [data, selectedProject, saveData]);
 
     const updateVersion = useCallback(async (versionId, updates) => {
         const versionData = {...updates};
@@ -261,7 +273,7 @@ const App = () => {
         const updatedProject = newData.projects.find(p => p.id === selectedProject.id);
         setSelectedProject(updatedProject);
         setShowModal(false);
-    }, [data, selectedProject]);
+    }, [data, selectedProject, saveData]);
 
     const deleteVersion = useCallback(async (versionId) => {
         if (!isLoggedIn) {
@@ -285,7 +297,7 @@ const App = () => {
             const updatedProject = newData.projects.find(p => p.id === selectedProject.id);
             setSelectedProject(updatedProject);
         }
-    }, [data, isLoggedIn, selectedProject]);
+    }, [data, isLoggedIn, selectedProject, saveData]);
 
     const addTestRecord = useCallback((record) => {
         const newData = {
@@ -301,7 +313,7 @@ const App = () => {
         const updatedProject = newData.projects.find(p => p.id === selectedProject.id);
         setSelectedProject(updatedProject);
         setShowModal(false);
-    }, [data, selectedProject]);
+    }, [data, selectedProject, saveData]);
 
     const deleteTestRecord = useCallback((recordId) => {
         if (!isLoggedIn) {
@@ -322,7 +334,7 @@ const App = () => {
             const updatedProject = newData.projects.find(p => p.id === selectedProject.id);
             setSelectedProject(updatedProject);
         }
-    }, [data, isLoggedIn, selectedProject]);
+    }, [data, isLoggedIn, selectedProject, saveData]);
 
     const exportData = async (format) => {
         let content = '';
@@ -356,6 +368,32 @@ const App = () => {
             alert('导入失败：' + (result.error || '未知错误'));
         }
     };
+
+    // 加载状态
+    if (loading) {
+        return (
+            <div className="app-container">
+                <div className="main-content" style={{justifyContent: 'center', alignItems: 'center'}}>
+                    <div className="spinner"></div>
+                    <p>加载中...</p>
+                </div>
+            </div>
+        );
+    }
+
+    // 错误状态
+    if (error) {
+        return (
+            <div className="app-container">
+                <div className="main-content" style={{justifyContent: 'center', alignItems: 'center'}}>
+                    <div className="error-state">
+                        <p style={{color: 'red'}}>{error}</p>
+                        <button onClick={loadData} className="btn btn-primary mt-4">重试</button>
+                    </div>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="app-container">
@@ -500,18 +538,40 @@ const App = () => {
 
 // 项目列表组件
 const ProjectList = memo(({projects, onSelect, onAdd, onEdit, onDelete, isLoggedIn}) => {
+    const [searchTerm, setSearchTerm] = useState('');
+    const debouncedSearchTerm = useDebounce(searchTerm, 300);
+
+    const filteredProjects = useMemo(() => {
+        if (!debouncedSearchTerm) return projects;
+
+        return projects.filter(project =>
+            project.name.toLowerCase().includes(debouncedSearchTerm.toLowerCase()) ||
+            project.description?.toLowerCase().includes(debouncedSearchTerm.toLowerCase())
+        );
+    }, [projects, debouncedSearchTerm]);
+
     return (
         <div>
             <div className="flex justify-between items-center mb-6">
                 <h3 className="text-lg font-semibold">所有项目</h3>
-                <button onClick={onAdd} className="btn btn-primary">
-                    <Icon name="plus"/>
-                    <span>新建项目</span>
-                </button>
+                <div className="flex gap-2">
+                    <input
+                        type="text"
+                        placeholder="搜索项目..."
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        className="form-input"
+                        style={{width: '200px'}}
+                    />
+                    <button onClick={onAdd} className="btn btn-primary">
+                        <Icon name="plus"/>
+                        <span>新建项目</span>
+                    </button>
+                </div>
             </div>
 
             <div className="card-grid">
-                {projects.map(project => (
+                {filteredProjects.map(project => (
                     <div key={project.id} className="card" style={{cursor: 'pointer'}}>
                         <div onClick={() => onSelect(project)}>
                             <h4 className="text-lg font-semibold mb-2">{project.name}</h4>
@@ -552,10 +612,10 @@ const ProjectList = memo(({projects, onSelect, onAdd, onEdit, onDelete, isLogged
                 ))}
             </div>
 
-            {projects.length === 0 && (
+            {filteredProjects.length === 0 && (
                 <div className="empty-state">
                     <Icon name="package" size={48}/>
-                    <p>还没有项目，点击"新建项目"开始</p>
+                    <p>{searchTerm ? '没有找到匹配的项目' : '还没有项目，点击"新建项目"开始'}</p>
                 </div>
             )}
         </div>
@@ -617,19 +677,12 @@ const ProjectDetail = memo(({
 
 // 版本管理标签页
 const VersionsTab = memo(({versions, onAdd, onEdit, onDelete, onExport, isLoggedIn}) => {
-    /*  const handleOpenFile = async (relativePath) => {
-        const result = await window.electronAPI.openFile(relativePath);
-        if (!result.success) {
-          alert('打开文件失败：' + result.error);
-        }
-      };*/
     const handleOpenFile = async (relativePath) => {
         const result = await window.electronAPI.openFileFolder(relativePath);
         if (!result.success) {
             alert('打开文件夹失败：' + result.error);
         }
     };
-
 
     return (
         <div>
@@ -863,14 +916,24 @@ const TestRecordsTab = memo(({records, onAdd, onDelete, isLoggedIn, selectedDate
 const LoginModal = memo(({onLogin, onClose}) => {
     const [username, setUsername] = useState('admin');
     const [password, setPassword] = useState('');
+    const passwordRef = useRef(null);
+
+    useEffect(() => {
+        // 自动聚焦密码输入框
+        if (passwordRef.current) {
+            setTimeout(() => {
+                passwordRef.current.focus();
+            }, 100);
+        }
+    }, []);
 
     const handleSubmit = () => {
         onLogin(username, password);
     };
 
     return (
-        <div className="modal-overlay">
-            <div className="modal">
+        <div className="modal-overlay" onClick={onClose}>
+            <div className="modal" onClick={(e) => e.stopPropagation()}>
                 <div className="modal-header">
                     <h3 className="modal-title">管理员登录</h3>
                     <button onClick={onClose} className="btn btn-icon btn-secondary">
@@ -892,6 +955,7 @@ const LoginModal = memo(({onLogin, onClose}) => {
                 <div className="form-group">
                     <label className="form-label">密码</label>
                     <input
+                        ref={passwordRef}
                         type="password"
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
@@ -943,6 +1007,39 @@ const Modal = ({type, item, projectId, onSave, onClose}) => {
     });
 
     const [isUploading, setIsUploading] = useState(false);
+    const modalRef = useRef(null);
+    const firstInputRef = useRef(null);
+
+    // 添加焦点管理
+    useEffect(() => {
+        if (modalRef.current) {
+            // 模态框显示时阻止背景滚动
+            document.body.style.overflow = 'hidden';
+
+            // 聚焦第一个输入框
+            setTimeout(() => {
+                if (firstInputRef.current) {
+                    firstInputRef.current.focus();
+                }
+            }, 100);
+        }
+
+        return () => {
+            document.body.style.overflow = 'auto';
+        };
+    }, []);
+
+    // 处理ESC键关闭
+    useEffect(() => {
+        const handleEscape = (e) => {
+            if (e.key === 'Escape') {
+                onClose();
+            }
+        };
+
+        window.addEventListener('keydown', handleEscape);
+        return () => window.removeEventListener('keydown', handleEscape);
+    }, [onClose]);
 
     const handleFileSelect = async (fileType) => {
         setIsUploading(true);
@@ -1015,8 +1112,13 @@ const Modal = ({type, item, projectId, onSave, onClose}) => {
     };
 
     return (
-        <div className="modal-overlay">
-            <div className="modal" style={{maxWidth: '600px'}}>
+        <div className="modal-overlay" onClick={onClose}>
+            <div
+                className="modal"
+                style={{maxWidth: '600px'}}
+                onClick={(e) => e.stopPropagation()}
+                ref={modalRef}
+            >
                 <div className="modal-header">
                     <h3 className="modal-title">{getTitle()}</h3>
                     <button onClick={onClose} className="btn btn-icon btn-secondary">
@@ -1029,6 +1131,7 @@ const Modal = ({type, item, projectId, onSave, onClose}) => {
                         <div className="form-group">
                             <label className="form-label">项目名称 *</label>
                             <input
+                                ref={firstInputRef}
                                 type="text"
                                 value={formData.name}
                                 onChange={(e) => setFormData({...formData, name: e.target.value})}
@@ -1052,6 +1155,7 @@ const Modal = ({type, item, projectId, onSave, onClose}) => {
                         <div className="form-group">
                             <label className="form-label">版本号 *</label>
                             <input
+                                ref={firstInputRef}
                                 type="text"
                                 value={formData.version}
                                 onChange={(e) => setFormData({...formData, version: e.target.value})}
@@ -1157,6 +1261,7 @@ const Modal = ({type, item, projectId, onSave, onClose}) => {
                         <div className="form-group">
                             <label className="form-label">测试日期 *</label>
                             <input
+                                ref={firstInputRef}
                                 type="date"
                                 value={formData.testDate}
                                 onChange={(e) => setFormData({...formData, testDate: e.target.value})}

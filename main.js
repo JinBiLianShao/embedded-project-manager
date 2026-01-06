@@ -44,7 +44,8 @@ function createWindow() {
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
-      nodeIntegration: false
+      nodeIntegration: false,
+      webSecurity: true
     },
     icon: path.join(__dirname, 'icon.png')
   });
@@ -98,6 +99,19 @@ ipcMain.handle('save-data', async (event, data) => {
   }
 });
 
+// 增量保存数据
+ipcMain.handle('save-data-partial', async (event, updates) => {
+  try {
+    const currentData = JSON.parse(fs.readFileSync(dataPath, 'utf8'));
+    const newData = { ...currentData, ...updates };
+    fs.writeFileSync(dataPath, JSON.stringify(newData, null, 2));
+    return { success: true };
+  } catch (error) {
+    console.error('Error saving partial data:', error);
+    return { success: false, error: error.message };
+  }
+});
+
 ipcMain.handle('export-data', async (event, data, format) => {
   try {
     const result = await dialog.showSaveDialog(mainWindow, {
@@ -146,7 +160,7 @@ ipcMain.handle('import-data', async () => {
   }
 });
 
-// 选择文件
+// 选择文件 - 使用流式处理避免大文件内存占用
 ipcMain.handle('select-file', async (event, fileType) => {
   try {
     let filters = [];
@@ -171,18 +185,29 @@ ipcMain.handle('select-file', async (event, fileType) => {
     if (!result.canceled && result.filePaths.length > 0) {
       const filePath = result.filePaths[0];
       const fileName = path.basename(filePath);
-      const fileBuffer = fs.readFileSync(filePath);
+      const stats = fs.statSync(filePath);
 
-      // 计算MD5
-      const md5 = crypto.createHash('md5').update(fileBuffer).digest('hex');
+      // 使用流计算MD5，避免大文件内存占用
+      return new Promise((resolve, reject) => {
+        const hash = crypto.createHash('md5');
+        const stream = fs.createReadStream(filePath);
 
-      return {
-        success: true,
-        fileName,
-        fileSize: fileBuffer.length,
-        md5,
-        tempPath: filePath
-      };
+        stream.on('data', (chunk) => hash.update(chunk));
+        stream.on('end', () => {
+          const md5 = hash.digest('hex');
+          resolve({
+            success: true,
+            fileName,
+            fileSize: stats.size,
+            md5,
+            tempPath: filePath
+          });
+        });
+        stream.on('error', (error) => {
+          console.error('Error reading file:', error);
+          reject({ success: false, error: error.message });
+        });
+      });
     }
     return { success: false, canceled: true };
   } catch (error) {
@@ -204,13 +229,26 @@ ipcMain.handle('save-file', async (event, sourcePath, projectId, versionId, file
     const fileName = path.basename(sourcePath);
     const destPath = path.join(versionDir, `${fileType}_${fileName}`);
 
-    fs.copyFileSync(sourcePath, destPath);
+    // 使用流式复制大文件
+    const readStream = fs.createReadStream(sourcePath);
+    const writeStream = fs.createWriteStream(destPath);
 
-    return {
-      success: true,
-      relativePath: path.relative(filesPath, destPath),
-      fileName
-    };
+    return new Promise((resolve, reject) => {
+      readStream.pipe(writeStream);
+
+      writeStream.on('finish', () => {
+        resolve({
+          success: true,
+          relativePath: path.relative(filesPath, destPath),
+          fileName
+        });
+      });
+
+      writeStream.on('error', (error) => {
+        console.error('Error saving file:', error);
+        reject({ success: false, error: error.message });
+      });
+    });
   } catch (error) {
     console.error('Error saving file:', error);
     return { success: false, error: error.message };
@@ -255,8 +293,6 @@ ipcMain.handle('open-file-folder', async (event, relativePath) => {
     return { success: false, error: error.message };
   }
 });
-
-
 
 // 删除版本文件
 ipcMain.handle('delete-version-files', async (event, projectId, versionId) => {
