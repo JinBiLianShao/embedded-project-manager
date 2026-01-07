@@ -60,6 +60,155 @@ const Icon = memo(({name, size = 20}) => {
     );
 });
 
+// 自定义确认对话框组件
+const ConfirmDialog = memo(({
+                                title = '确认操作',
+                                message,
+                                onConfirm,
+                                onCancel,
+                                confirmText = '确定',
+                                cancelText = '取消'
+                            }) => {
+    const modalRef = useRef(null);
+    const cancelBtnRef = useRef(null);
+
+    // 保存当前焦点状态
+    const prevFocusedElement = useRef(document.activeElement);
+
+    useEffect(() => {
+        // 保存打开对话框前的焦点元素
+        prevFocusedElement.current = document.activeElement;
+
+        // 阻止背景滚动
+        document.body.style.overflow = 'hidden';
+
+        // 自动聚焦到取消按钮
+        const focusTimer = setTimeout(() => {
+            if (cancelBtnRef.current) {
+                cancelBtnRef.current.focus();
+            }
+        }, 50);
+
+        // ESC 键关闭
+        const handleEscape = (e) => {
+            if (e.key === 'Escape') {
+                handleCancel();
+            }
+        };
+
+        window.addEventListener('keydown', handleEscape);
+
+        return () => {
+            clearTimeout(focusTimer);
+            document.body.style.overflow = 'auto';
+            window.removeEventListener('keydown', handleEscape);
+        };
+    }, []);
+
+    const handleConfirm = useCallback(() => {
+        // 关闭对话框前恢复焦点
+        if (prevFocusedElement.current?.focus) {
+            setTimeout(() => prevFocusedElement.current.focus(), 10);
+        }
+        onConfirm();
+    }, [onConfirm]);
+
+    const handleCancel = useCallback(() => {
+        // 关闭对话框前恢复焦点
+        if (prevFocusedElement.current?.focus) {
+            setTimeout(() => prevFocusedElement.current.focus(), 10);
+        }
+        onCancel();
+    }, [onCancel]);
+
+    // 点击背景关闭
+    const handleBackdropClick = useCallback((e) => {
+        if (e.target === e.currentTarget) {
+            handleCancel();
+        }
+    }, [handleCancel]);
+
+    return (
+        <div className="modal-overlay" onClick={handleBackdropClick}>
+            <div className="modal" ref={modalRef} style={{ maxWidth: '450px' }}>
+                <div className="modal-header">
+                    <h3 className="modal-title">{title}</h3>
+                    <button onClick={handleCancel} className="btn btn-icon btn-secondary">
+                        <Icon name="x" size={20}/>
+                    </button>
+                </div>
+
+                <div className="modal-body">
+                    <div style={{ padding: '16px 0', fontSize: '16px', lineHeight: 1.5 }}>
+                        {message}
+                    </div>
+                </div>
+
+                <div className="modal-footer">
+                    <button
+                        ref={cancelBtnRef}
+                        onClick={handleCancel}
+                        className="btn btn-secondary"
+                    >
+                        {cancelText}
+                    </button>
+                    <button
+                        onClick={handleConfirm}
+                        className="btn btn-danger"
+                    >
+                        {confirmText}
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+});
+
+// 确认管理器 Hook
+const useConfirm = () => {
+    const [confirmState, setConfirmState] = useState({
+        isOpen: false,
+        title: '',
+        message: '',
+        onConfirm: null,
+        onCancel: null
+    });
+
+    const confirm = useCallback(({ title, message, onConfirm, onCancel }) => {
+        setConfirmState({
+            isOpen: true,
+            title: title || '确认操作',
+            message,
+            onConfirm: async () => {
+                setConfirmState(prev => ({ ...prev, isOpen: false }));
+                if (onConfirm) await onConfirm();
+            },
+            onCancel: () => {
+                setConfirmState(prev => ({ ...prev, isOpen: false }));
+                if (onCancel) onCancel();
+            }
+        });
+    }, []);
+
+    const ConfirmDialogWrapper = useMemo(() => {
+        if (!confirmState.isOpen) return null;
+
+        return (
+            <ConfirmDialog
+                title={confirmState.title}
+                message={confirmState.message}
+                onConfirm={confirmState.onConfirm}
+                onCancel={confirmState.onCancel}
+            />
+        );
+    }, [confirmState]);
+
+    return {
+        confirm,
+        ConfirmDialog: ConfirmDialogWrapper
+    };
+};
+
 // 主应用组件
 const App = () => {
     const [data, setData] = useState({
@@ -78,6 +227,9 @@ const App = () => {
     const [selectedDate, setSelectedDate] = useState(new Date());
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
+
+    // 使用自定义确认对话框
+    const { confirm, ConfirmDialog } = useConfirm();
 
     useEffect(() => {
         loadData();
@@ -158,18 +310,22 @@ const App = () => {
             return;
         }
 
-        // 使用requestAnimationFrame来延迟删除操作，确保焦点不会丢失
-        requestAnimationFrame(() => {
-            if (confirm('确定要删除这个项目吗？')) {
+        confirm({
+            title: '删除项目',
+            message: '确定要删除这个项目吗？此操作不可恢复。',
+            onConfirm: () => {
                 const newData = {...data, projects: data.projects.filter(p => p.id !== projectId)};
                 saveData(newData);
                 if (selectedProject && selectedProject.id === projectId) {
                     setSelectedProject(null);
                     setCurrentView('projects');
                 }
+            },
+            onCancel: () => {
+                console.log('删除取消');
             }
         });
-    }, [data, isLoggedIn, selectedProject, saveData]);
+    }, [data, isLoggedIn, selectedProject, saveData, confirm]);
 
     const addVersion = useCallback(async (version) => {
         const versionId = Date.now();
@@ -279,16 +435,17 @@ const App = () => {
         setShowModal(false);
     }, [data, selectedProject, saveData]);
 
-    const deleteVersion = useCallback(async (versionId) => {
+    const deleteVersion = useCallback((versionId) => {
         if (!isLoggedIn) {
             alert('需要管理员权限');
             return;
         }
 
-        requestAnimationFrame(() => {
-            if (confirm('确定要删除这个版本吗？')) {
-                // 使用立即执行函数来执行删除
-                (async () => {
+        confirm({
+            title: '删除版本',
+            message: '确定要删除这个版本吗？此操作将同时删除关联的文件。',
+            onConfirm: async () => {
+                try {
                     // 删除文件
                     await window.electronAPI.deleteVersionFiles(selectedProject.id, versionId);
 
@@ -304,10 +461,16 @@ const App = () => {
                     saveData(newData);
                     const updatedProject = newData.projects.find(p => p.id === selectedProject.id);
                     setSelectedProject(updatedProject);
-                })();
+                } catch (error) {
+                    console.error('删除版本失败:', error);
+                    alert('删除失败: ' + error.message);
+                }
+            },
+            onCancel: () => {
+                console.log('删除取消');
             }
         });
-    }, [data, isLoggedIn, selectedProject, saveData]);
+    }, [data, isLoggedIn, selectedProject, saveData, confirm]);
 
     const addTestRecord = useCallback((record) => {
         const newData = {
@@ -331,8 +494,10 @@ const App = () => {
             return;
         }
 
-        requestAnimationFrame(() => {
-            if (confirm('确定要删除这条测试记录吗？')) {
+        confirm({
+            title: '删除测试记录',
+            message: '确定要删除这条测试记录吗？',
+            onConfirm: () => {
                 const newData = {
                     ...data,
                     projects: data.projects.map(p => {
@@ -345,9 +510,12 @@ const App = () => {
                 saveData(newData);
                 const updatedProject = newData.projects.find(p => p.id === selectedProject.id);
                 setSelectedProject(updatedProject);
+            },
+            onCancel: () => {
+                console.log('删除取消');
             }
         });
-    }, [data, isLoggedIn, selectedProject, saveData]);
+    }, [data, isLoggedIn, selectedProject, saveData, confirm]);
 
     const exportData = async (format) => {
         let content = '';
@@ -370,16 +538,23 @@ const App = () => {
     };
 
     const importData = async () => {
-        if (!confirm('导入数据将覆盖现有数据，确定继续吗？')) {
-            return;
-        }
-        const result = await window.electronAPI.importData();
-        if (result.success && result.data) {
-            saveData(result.data);
-            alert('导入成功');
-        } else if (!result.canceled) {
-            alert('导入失败：' + (result.error || '未知错误'));
-        }
+        // 使用自定义确认对话框
+        confirm({
+            title: '导入数据',
+            message: '导入数据将覆盖现有数据，确定继续吗？',
+            onConfirm: async () => {
+                const result = await window.electronAPI.importData();
+                if (result.success && result.data) {
+                    saveData(result.data);
+                    alert('导入成功');
+                } else if (!result.canceled) {
+                    alert('导入失败：' + (result.error || '未知错误'));
+                }
+            },
+            onCancel: () => {
+                console.log('导入取消');
+            }
+        });
     };
 
     // 加载状态
@@ -545,6 +720,9 @@ const App = () => {
                     onClose={() => setShowModal(false)}
                 />
             )}
+
+            {/* 自定义确认对话框 */}
+            {ConfirmDialog}
         </div>
     );
 };
@@ -562,13 +740,6 @@ const ProjectList = memo(({projects, onSelect, onAdd, onEdit, onDelete, isLogged
             project.description?.toLowerCase().includes(debouncedSearchTerm.toLowerCase())
         );
     }, [projects, debouncedSearchTerm]);
-
-    // 处理删除点击事件
-    const handleDeleteClick = useCallback((e, projectId) => {
-        e.stopPropagation();
-        e.preventDefault(); // 防止默认行为
-        onDelete(projectId);
-    }, [onDelete]);
 
     return (
         <div>
@@ -617,7 +788,11 @@ const ProjectList = memo(({projects, onSelect, onAdd, onEdit, onDelete, isLogged
                                     <span>编辑</span>
                                 </button>
                                 <button
-                                    onClick={(e) => handleDeleteClick(e, project.id)}
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        e.preventDefault();
+                                        onDelete(project.id);
+                                    }}
                                     className="btn btn-danger"
                                     style={{flex: 1}}
                                 >
@@ -701,13 +876,6 @@ const VersionsTab = memo(({versions, onAdd, onEdit, onDelete, onExport, isLogged
             alert('打开文件夹失败：' + result.error);
         }
     };
-
-    // 处理删除点击
-    const handleDeleteClick = useCallback((e, versionId) => {
-        e.preventDefault();
-        e.stopPropagation();
-        onDelete(versionId);
-    }, [onDelete]);
 
     return (
         <div>
@@ -799,7 +967,11 @@ const VersionsTab = memo(({versions, onAdd, onEdit, onDelete, onExport, isLogged
                                     <Icon name="edit" size={18}/>
                                 </button>
                                 <button
-                                    onClick={(e) => handleDeleteClick(e, version.id)}
+                                    onClick={(e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        onDelete(version.id);
+                                    }}
                                     className="btn btn-icon btn-danger"
                                 >
                                     <Icon name="trash" size={18}/>
@@ -850,13 +1022,6 @@ const TestRecordsTab = memo(({records, onAdd, onDelete, isLoggedIn, selectedDate
         newDate.setMonth(newDate.getMonth() + offset);
         setCurrentMonth(newDate);
     };
-
-    // 处理删除点击
-    const handleDeleteClick = useCallback((e, recordId) => {
-        e.preventDefault();
-        e.stopPropagation();
-        onDelete(recordId);
-    }, [onDelete]);
 
     return (
         <div>
@@ -936,7 +1101,11 @@ const TestRecordsTab = memo(({records, onAdd, onDelete, isLoggedIn, selectedDate
                             </div>
                             {isLoggedIn && (
                                 <button
-                                    onClick={(e) => handleDeleteClick(e, record.id)}
+                                    onClick={(e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        onDelete(record.id);
+                                    }}
                                     className="btn btn-icon btn-danger"
                                 >
                                     <Icon name="trash" size={18}/>

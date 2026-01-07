@@ -343,14 +343,19 @@ input, textarea, select, [contenteditable="true"] {
   font-weight: bold;
 }
 
+.modal-body {
+  margin-bottom: 1.5rem;
+}
+
 .modal-footer {
   display: flex;
   gap: 0.75rem;
   margin-top: 1.5rem;
+  justify-content: flex-end;
 }
 
 .modal-footer .btn {
-  flex: 1;
+  min-width: 80px;
 }
 
 /* 标签页样式 */
@@ -695,6 +700,14 @@ code {
   .modal {
     width: 95%;
     max-width: 95%;
+  }
+
+  .modal-footer {
+    flex-direction: column;
+  }
+
+  .modal-footer .btn {
+    width: 100%;
   }
 }
 

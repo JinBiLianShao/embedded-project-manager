@@ -160,6 +160,28 @@ ipcMain.handle('import-data', async () => {
   }
 });
 
+// 添加确认对话框 API
+ipcMain.handle('show-confirm-dialog', async (event, options) => {
+  try {
+    const result = await dialog.showMessageBox(mainWindow, {
+      type: 'question',
+      title: options.title || '确认',
+      message: options.message,
+      buttons: options.buttons || ['确定', '取消'],
+      defaultId: 1, // 默认选中取消按钮
+      cancelId: 1   // 按 ESC 或关闭时返回的索引
+    });
+
+    return {
+      success: true,
+      confirmed: result.response === 0 // 0 = 确定按钮
+    };
+  } catch (error) {
+    console.error('Error showing dialog:', error);
+    return { success: false, error: error.message };
+  }
+});
+
 // 选择文件 - 使用流式处理避免大文件内存占用
 ipcMain.handle('select-file', async (event, fileType) => {
   try {

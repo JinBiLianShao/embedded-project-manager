@@ -7,6 +7,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   exportData: (data, format) => ipcRenderer.invoke('export-data', data, format),
   importData: () => ipcRenderer.invoke('import-data'),
 
+  // 确认对话框 API
+  showConfirmDialog: (options) => ipcRenderer.invoke('show-confirm-dialog', options),
+
   // 文件操作API
   selectFile: (fileType) => ipcRenderer.invoke('select-file', fileType),
   saveFile: (sourcePath, projectId, versionId, fileType) =>
