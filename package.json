@@ -13,17 +13,17 @@
   },
   "dependencies": {
     "cnpm": "^9.4.0",
-    "iconv-lite": "^0.7.0"
+    "iconv-lite": "^0.7.2"
   },
   "devDependencies": {
-    "app-builder-lib": "^26.0.12",
-    "electron": "^37.2.4",
-    "electron-builder": "^26.0.12",
-    "electron-builder-squirrel-windows": "^26.0.12",
+    "app-builder-lib": "^26.4.0",
+    "electron": "^40.0.0",
+    "electron-builder": "^26.4.0",
+    "electron-builder-squirrel-windows": "^26.4.0",
     "electron-winstaller": "^5.4.0",
-    "node-gyp": "^10.2.0",
-    "node-gyp-build": "^4.8.1",
-    "rimraf": "^2.6.3",
+    "node-gyp": "^12.2.0",
+    "node-gyp-build": "^4.8.4",
+    "rimraf": "^6.1.2",
     "temp": "^0.9.4"
   },
   "build": {
