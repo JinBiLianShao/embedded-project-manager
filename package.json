@@ -1,37 +1,48 @@
 {
   "name": "embedded-project-manager",
-  "version": "1.0.5",
+  "version": "2.0.0",
   "description": "嵌入式开发项目管理系统",
   "license": "MIT",
-  "author": "liansixin",
+  "author": {
+    "name": "liansixin",
+    "email": "2013182991@qq.com"
+  },
+  "homepage": "https://github.com/liansixin/embedded-project-manager",
   "type": "commonjs",
-  "main": "./main.js",
+  "main": "src/main/index.js",
   "scripts": {
-    "start": "electron .",
-    "build": "electron-builder",
-    "build:linux": "electron-builder --linux"
+    "build:renderer": "node build/build-renderer.mjs",
+    "build": "npm run build:renderer && electron-builder",
+    "build:linux": "npm run build:renderer && electron-builder --linux",
+    "build:dir": "npm run build:renderer && electron-builder --dir",
+    "start": "npm run build:renderer && electron .",
+    "start:watch": "node build/build-renderer.mjs --watch"
   },
   "dependencies": {
-    "cnpm": "^9.4.0",
-    "iconv-lite": "^0.7.2"
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
   },
   "devDependencies": {
-    "app-builder-lib": "^26.4.0",
     "electron": "^40.0.0",
     "electron-builder": "^26.4.0",
-    "electron-builder-squirrel-windows": "^26.4.0",
-    "electron-winstaller": "^5.4.0",
-    "node-gyp": "^12.2.0",
-    "node-gyp-build": "^4.8.4",
-    "rimraf": "^6.1.2",
-    "temp": "^0.9.4"
+    "esbuild": "^0.28.2"
   },
   "build": {
     "productName": "embedded-project-manager",
     "appId": "com.embedded-project-manager",
+    "copyright": "Copyright © 2026 南京仙容信息科技有限公司",
     "directories": {
-      "output": "app_file"
+      "output": "app_file",
+      "buildResources": "build"
     },
+    "files": [
+      "src/main/**/*",
+      "src/preload/**/*",
+      "src/renderer/index.html",
+      "src/renderer/bundle.js",
+      "src/renderer/styles.css",
+      "package.json"
+    ],
     "nsis": {
       "oneClick": false,
       "allowElevation": true,
@@ -55,14 +66,20 @@
       ]
     },
     "linux": {
-      "icon": "./icons",
+      "icon": "icons",
       "target": [
         "AppImage",
-        "deb",
-        "rpm"
+        "deb"
       ],
-      "category": "Utility",
-      "maintainer": "liansixin <2013182991@qq.com>"
+      "category": "Development",
+      "maintainer": "liansixin <2013182991@qq.com>",
+      "synopsis": "嵌入式开发项目管理系统",
+      "desktop": {
+        "entry": {
+          "Name": "Embedded Project Manager",
+          "Comment": "管理嵌入式项目的版本与测试记录"
+        }
+      }
     }
   }
 }
