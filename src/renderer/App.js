@@ -171,6 +171,12 @@ export default function App() {
               onAddTestRecord={() => setModal({ type: 'add-test-record' })}
               onEditTestRecord={(record) => setModal({ type: 'edit-test-record', record })}
               onDeleteTestRecord={(recordId) => store.deleteTestRecord(selectedProject.id, recordId)}
+              onUpsertDevices={store.upsertDevices}
+              onRemoveDevices={store.removeDevices}
+              onAddDeviceRecord={store.addDeviceTestRecord}
+              onUpsertBatches={store.upsertBatches}
+              onUpsertIssues={store.upsertIssues}
+              onRemoveIssue={store.removeIssue}
             />
           ) : null}
         </div>

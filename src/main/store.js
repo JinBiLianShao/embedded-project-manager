@@ -69,8 +69,25 @@ function emptyProject(id) {
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     versions: [],
+    // 项目级的自由测试记录（不分设备时使用）
     testRecords: [],
+    // 以下为 v2.1 新增，默认空数组，旧数据自动补齐
+    batches: [],
+    devices: [],
+    issues: [],
   };
+}
+
+// 保留调用方传入、但本模块不认识的字段。
+// normalizeData 是「白名单重建」，若不显式保留，渲染层新增的字段
+// 会在每次保存时被静默丢弃——这属于不可接受的数据丢失，故统一兜底。
+function keepUnknown(source, known) {
+  if (!source || typeof source !== 'object') return {};
+  const extra = {};
+  for (const key of Object.keys(source)) {
+    if (!known.includes(key)) extra[key] = source[key];
+  }
+  return extra;
 }
 
 function asString(value, fallback = '') {
@@ -108,6 +125,11 @@ function normalizeData(raw) {
     .filter((p) => p && typeof p === 'object' && p.id != null)
     .map((p) => {
       const project = emptyProject(p.id);
+      // 先铺未知字段，再用已知字段覆盖，保证扩展字段不丢失
+      Object.assign(project, keepUnknown(p, [
+        'id', 'name', 'description', 'chip', 'platform', 'customer', 'status',
+        'createdAt', 'updatedAt', 'versions', 'testRecords', 'batches', 'devices', 'issues',
+      ]));
       project.name = asString(p.name, '未命名项目');
       project.description = asString(p.description);
       project.chip = asString(p.chip);
@@ -120,6 +142,10 @@ function normalizeData(raw) {
       project.versions = asArray(p.versions)
         .filter((v) => v && typeof v === 'object' && v.id != null)
         .map((v) => ({
+          ...keepUnknown(v, [
+            'id', 'version', 'buildTime', 'changelog', 'createdAt',
+            'binaryFile', 'configFile', 'md5',
+          ]),
           id: v.id,
           version: asString(v.version, '未命名版本'),
           buildTime: asString(v.buildTime),
@@ -128,19 +154,69 @@ function normalizeData(raw) {
           binaryFile: normalizeFileRef(v.binaryFile),
           configFile: normalizeFileRef(v.configFile),
           md5: asString(v.md5),
+          // 阶段与组件清单（v2.1）
+          stage: asString(v.stage),
+          components: asArray(v.components),
+          env: v.env && typeof v.env === 'object' ? v.env : {},
         }));
 
       project.testRecords = asArray(p.testRecords)
         .filter((r) => r && typeof r === 'object' && r.id != null)
-        .map((r) => ({
-          id: r.id,
-          testDate: asString(r.testDate),
-          tester: asString(r.tester),
-          result: r.result === '失败' ? '失败' : '通过',
-          notes: asString(r.notes),
-          // 旧数据没有 versionId，留空表示「未关联版本」，UI 会明确标注。
-          versionId: r.versionId == null ? null : r.versionId,
-          createdAt: asString(r.createdAt, new Date().toISOString()),
+        .map(normalizeTestRecord);
+
+      project.batches = asArray(p.batches)
+        .filter((b) => b && typeof b === 'object' && b.id != null)
+        .map((b) => ({
+          ...keepUnknown(b, ['id', 'code', 'stage', 'quantity', 'versionId', 'envSnapshot', 'createdAt', 'shippedAt', 'notes']),
+          id: b.id,
+          code: asString(b.code, '未命名批次'),
+          stage: asString(b.stage),
+          quantity: Number(b.quantity) || 0,
+          versionId: b.versionId == null ? null : b.versionId,
+          envSnapshot: b.envSnapshot && typeof b.envSnapshot === 'object' ? b.envSnapshot : {},
+          createdAt: asString(b.createdAt, new Date().toISOString()),
+          shippedAt: asString(b.shippedAt),
+          notes: asString(b.notes),
+        }));
+
+      project.devices = asArray(p.devices)
+        .filter((d) => d && typeof d === 'object' && d.id != null)
+        .map((d) => ({
+          ...keepUnknown(d, ['id', 'sn', 'batchId', 'versionId', 'envSnapshot', 'status', 'testRecords', 'issueIds', 'createdAt', 'updatedAt', 'shippedAt', 'customer', 'notes']),
+          id: d.id,
+          sn: asString(d.sn),
+          batchId: d.batchId == null ? null : d.batchId,
+          // 设备实际烧录的固件，可能与批次默认值不同
+          versionId: d.versionId == null ? null : d.versionId,
+          envSnapshot: d.envSnapshot && typeof d.envSnapshot === 'object' ? d.envSnapshot : {},
+          status: asString(d.status, '待测'),
+          testRecords: asArray(d.testRecords).map(normalizeTestRecord),
+          issueIds: asArray(d.issueIds),
+          createdAt: asString(d.createdAt, new Date().toISOString()),
+          updatedAt: asString(d.updatedAt, new Date().toISOString()),
+          shippedAt: asString(d.shippedAt),
+          customer: asString(d.customer),
+          notes: asString(d.notes),
+        }));
+
+      project.issues = asArray(p.issues)
+        .filter((i) => i && typeof i === 'object' && i.id != null)
+        .map((i) => ({
+          ...keepUnknown(i, ['id', 'scope', 'batchId', 'deviceIds', 'versionId', 'severity', 'status', 'title', 'description', 'createdAt', 'updatedAt', 'resolvedAt', 'resolution', 'createdBy']),
+          id: i.id,
+          scope: i.scope === 'batch' ? 'batch' : 'device',
+          batchId: i.batchId == null ? null : i.batchId,
+          deviceIds: asArray(i.deviceIds),
+          versionId: i.versionId == null ? null : i.versionId,
+          severity: asString(i.severity, '一般'),
+          status: asString(i.status, '打开'),
+          title: asString(i.title),
+          description: asString(i.description),
+          createdAt: asString(i.createdAt, new Date().toISOString()),
+          updatedAt: asString(i.updatedAt, new Date().toISOString()),
+          resolvedAt: asString(i.resolvedAt),
+          resolution: asString(i.resolution),
+          createdBy: asString(i.createdBy),
         }));
 
       return project;
@@ -162,6 +238,24 @@ function normalizeData(raw) {
       currentUser: currentUser && users[currentUser] ? currentUser : null,
       mustChangePassword: !!(raw.settings && raw.settings.mustChangePassword),
     },
+  };
+}
+
+// 测试记录：软件测试与硬件测试关注点不同，用 category 区分
+function normalizeTestRecord(r) {
+  return {
+    ...keepUnknown(r, ['id', 'testDate', 'tester', 'result', 'notes', 'versionId', 'createdAt', 'category', 'deviceId']),
+    id: r.id,
+    testDate: asString(r.testDate),
+    tester: asString(r.tester),
+    result: r.result === '失败' ? '失败' : '通过',
+    notes: asString(r.notes),
+    // 旧数据没有 versionId，留空表示「未关联版本」，UI 会明确标注。
+    versionId: r.versionId == null ? null : r.versionId,
+    // software = 软件测试，hardware = 硬件测试，'' = 早期未区分
+    category: r.category === 'software' || r.category === 'hardware' ? r.category : '',
+    deviceId: r.deviceId == null ? null : r.deviceId,
+    createdAt: asString(r.createdAt, new Date().toISOString()),
   };
 }
 

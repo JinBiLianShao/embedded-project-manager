@@ -2,12 +2,18 @@ import React, { memo, useState } from 'react';
 import { Icon } from './Icon.js';
 import { VersionsTab } from './VersionsTab.js';
 import { TestRecordsTab } from './TestRecordsTab.js';
+import { DevicesTab } from './DevicesTab.js';
+import { BatchesTab } from './BatchesTab.js';
+import { IssuesTab } from './IssuesTab.js';
 import { CompareModal } from './CompareModal.js';
 import { formatDateShort } from '../utils/date.js';
 
 const TABS = [
   { key: 'versions', label: '版本管理', icon: 'file' },
-  { key: 'tests', label: '测试记录', icon: 'testTube' },
+  { key: 'devices', label: '设备', icon: 'chip' },
+  { key: 'batches', label: '批次', icon: 'package' },
+  { key: 'issues', label: '问题单', icon: 'alert' },
+  { key: 'tests', label: '项目测试记录', icon: 'testTube' },
   { key: 'info', label: '项目信息', icon: 'package' },
 ];
 
@@ -26,6 +32,12 @@ export const ProjectDetail = memo(function ProjectDetail({
   onAddTestRecord,
   onEditTestRecord,
   onDeleteTestRecord,
+  onUpsertDevices,
+  onRemoveDevices,
+  onAddDeviceRecord,
+  onUpsertBatches,
+  onUpsertIssues,
+  onRemoveIssue,
 }) {
   const [comparing, setComparing] = useState(null);
 
@@ -75,6 +87,31 @@ export const ProjectDetail = memo(function ProjectDetail({
             onCompare={setComparing}
             isAdmin={isAdmin}
             isLoggedIn={isLoggedIn}
+          />
+        ) : null}
+
+        {selectedTab === 'devices' ? (
+          <DevicesTab
+            project={project}
+            isAdmin={isAdmin}
+            isLoggedIn={isLoggedIn}
+            onUpsert={onUpsertDevices}
+            onRemove={onRemoveDevices}
+            onAddRecord={onAddDeviceRecord}
+          />
+        ) : null}
+
+        {selectedTab === 'batches' ? (
+          <BatchesTab project={project} isLoggedIn={isLoggedIn} onUpsert={onUpsertBatches}/>
+        ) : null}
+
+        {selectedTab === 'issues' ? (
+          <IssuesTab
+            project={project}
+            isLoggedIn={isLoggedIn}
+            isAdmin={isAdmin}
+            onUpsert={onUpsertIssues}
+            onRemove={onRemoveIssue}
           />
         ) : null}
 

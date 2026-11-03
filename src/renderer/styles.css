@@ -420,3 +420,20 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 1
   .form-row { grid-template-columns: 1fr; }
   .info-grid { grid-template-columns: 1fr; }
 }
+
+/* ---- 设备 / 批次 / 问题单（v2.1） ---- */
+.device-table { width: 100%; border-collapse: collapse; font-size: 12.5px; background: #fff; border-radius: var(--radius); overflow: hidden; }
+.device-table th, .device-table td { padding: 8px 10px; border-bottom: 1px solid var(--border); text-align: left; vertical-align: middle; }
+.device-table thead th { background: #f8fafc; font-weight: 600; color: #475569; }
+.device-table tbody tr:hover { background: #f8fafc; }
+.device-table .row-selected { background: #eff6ff; }
+.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.row-actions { display: flex; gap: 4px; }
+.bulk-bar { display: flex; align-items: center; gap: 8px; padding: 10px 14px; margin-bottom: 12px; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: var(--radius); font-size: 13px; }
+.progress-bar { height: 6px; background: #e2e8f0; border-radius: 3px; overflow: hidden; margin-top: 8px; }
+.progress-fill { height: 100%; background: var(--primary); transition: width 0.2s; }
+.form-section-title { font-size: 12.5px; font-weight: 600; color: #334155; margin: 16px 0 8px; padding-top: 12px; border-top: 1px solid var(--border); }
+.radio-row { display: flex; gap: 16px; flex-wrap: wrap; }
+.radio-item { display: flex; align-items: center; gap: 6px; font-size: 13px; cursor: pointer; }
+.device-picker { max-height: 180px; overflow-y: auto; border: 1px solid var(--border); border-radius: 6px; padding: 8px; display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px; }
+.device-pick-item { display: flex; align-items: center; gap: 6px; font-size: 12px; cursor: pointer; }

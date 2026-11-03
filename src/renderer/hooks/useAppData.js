@@ -301,6 +301,7 @@ export function useAppData(confirm) {
         result: form.result === '失败' ? '失败' : '通过',
         notes: form.notes || '',
         versionId: form.versionId == null ? null : form.versionId,
+        category: form.category === 'software' || form.category === 'hardware' ? form.category : '',
         createdAt: new Date().toISOString(),
       };
       const next = data.projects.map((project) =>
@@ -484,6 +485,136 @@ export function useAppData(confirm) {
     return true;
   }, [confirm, requireAdmin, notify]);
 
+  // ---- 设备 / 批次 / 问题单（走增量通道，只回传受影响的项目）----
+  const replaceProject = useCallback((updated) => {
+    if (!updated) return;
+    setData((prev) => ({
+      ...prev,
+      projects: prev.projects.map((p) => (p.id === updated.id ? updated : p)),
+    }));
+  }, []);
+
+  const upsertDevices = useCallback(
+    async (projectId, devices) => {
+      const response = await window.api.upsertDevices(projectId, devices);
+      if (!response.success) {
+        notify('保存设备失败：' + response.error, 'error');
+        return false;
+      }
+      replaceProject(response.project);
+      return true;
+    },
+    [notify, replaceProject]
+  );
+
+  const removeDevices = useCallback(
+    async (projectId, deviceIds) => {
+      if (!requireAdmin()) return false;
+      const ok = await confirm({
+        title: '删除设备',
+        message: '确定删除选中的 ' + (Array.isArray(deviceIds) ? deviceIds.length : 1) + ' 台设备吗？其测试记录会一并删除。',
+        confirmText: '删除',
+      });
+      if (!ok) return false;
+      const response = await window.api.removeDevices(projectId, deviceIds);
+      if (!response.success) {
+        notify('删除失败：' + response.error, 'error');
+        return false;
+      }
+      replaceProject(response.project);
+      notify('设备已删除');
+      return true;
+    },
+    [confirm, requireAdmin, notify, replaceProject]
+  );
+
+  const addDeviceTestRecord = useCallback(
+    async (projectId, deviceId, form) => {
+      const response = await window.api.addDeviceTestRecord(projectId, deviceId, {
+        ...form,
+        id: newId(),
+      });
+      if (!response.success) {
+        notify('保存测试记录失败：' + response.error, 'error');
+        return false;
+      }
+      // 只把这条记录并进本地状态，避免整项目重传
+      setData((prev) => ({
+        ...prev,
+        projects: prev.projects.map((p) =>
+          p.id === projectId
+            ? {
+                ...p,
+                devices: p.devices.map((d) =>
+                  d.id === deviceId ? { ...d, testRecords: [...d.testRecords, response.record] } : d
+                ),
+              }
+            : p
+        ),
+      }));
+      notify('测试记录已添加');
+      return true;
+    },
+    [notify]
+  );
+
+  const bulkAddDeviceTestRecords = useCallback(
+    async (projectId, rows) => {
+      const response = await window.api.bulkAddDeviceTestRecords(projectId, rows);
+      if (!response.success) {
+        notify('批量导入失败：' + response.error, 'error');
+        return response;
+      }
+      replaceProject(response.project);
+      notify('成功导入 ' + response.applied + ' 条' + (response.skipped.length ? '，跳过 ' + response.skipped.length + ' 条' : ''));
+      return response;
+    },
+    [notify, replaceProject]
+  );
+
+  const upsertBatches = useCallback(
+    async (projectId, batches) => {
+      const response = await window.api.upsertBatches(projectId, batches);
+      if (!response.success) {
+        notify('保存批次失败：' + response.error, 'error');
+        return false;
+      }
+      replaceProject(response.project);
+      return true;
+    },
+    [notify, replaceProject]
+  );
+
+  const upsertIssues = useCallback(
+    async (projectId, issues) => {
+      const response = await window.api.upsertIssues(projectId, issues);
+      if (!response.success) {
+        notify('保存问题单失败：' + response.error, 'error');
+        return false;
+      }
+      replaceProject(response.project);
+      return true;
+    },
+    [notify, replaceProject]
+  );
+
+  const removeIssue = useCallback(
+    async (projectId, issueId) => {
+      if (!requireAdmin()) return false;
+      const ok = await confirm({ title: '删除问题单', message: '确定删除这条问题单吗？', confirmText: '删除' });
+      if (!ok) return false;
+      const response = await window.api.removeIssue(projectId, issueId);
+      if (!response.success) {
+        notify('删除失败：' + response.error, 'error');
+        return false;
+      }
+      replaceProject(response.project);
+      notify('问题单已删除');
+      return true;
+    },
+    [confirm, requireAdmin, notify, replaceProject]
+  );
+
   const projects = useMemo(() => data.projects, [data.projects]);
 
   return {
@@ -509,6 +640,13 @@ export function useAppData(confirm) {
     addTestRecord,
     updateTestRecord,
     deleteTestRecord,
+    upsertDevices,
+    removeDevices,
+    addDeviceTestRecord,
+    bulkAddDeviceTestRecords,
+    upsertBatches,
+    upsertIssues,
+    removeIssue,
     login,
     logout,
     changePassword,

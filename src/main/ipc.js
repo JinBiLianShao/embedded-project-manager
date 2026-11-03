@@ -66,6 +66,18 @@ function fail(error) {
   return { success: false, error: error && error.message ? error.message : String(error) };
 }
 
+// 增量操作只回传单个项目，避免整库序列化
+function publicProject(projectId) {
+  const project = database().projects.find((p) => p.id === projectId);
+  return project || null;
+}
+
+function publicDevice(projectId, deviceId) {
+  const project = database().projects.find((p) => p.id === projectId);
+  if (!project) return null;
+  return project.devices.find((d) => d.id === deviceId) || null;
+}
+
 function register() {
   ipcMain.handle('data:load', async () => {
     const data = database();
@@ -85,6 +97,164 @@ function register() {
     }
     persist();
     return { success: true, data: publicView() };
+  });
+
+  // ---- 设备 / 批次 / 问题单：增量操作 ----
+  // 每次只回传受影响的项目，而不是整库，避免几千台设备时每次保存都
+  // 序列化数 MB 数据穿过 IPC 边界。
+  ipcMain.handle('devices:upsert', async (event, projectId, devices) => {
+    try {
+      const data = database();
+      const project = data.projects.find((p) => p.id === projectId);
+      if (!project) throw new Error('项目不存在');
+      const list = Array.isArray(devices) ? devices : [devices];
+      for (const incoming of list) {
+        if (!incoming || incoming.id == null) continue;
+        const index = project.devices.findIndex((d) => d.id === incoming.id);
+        const merged = {
+          ...(index >= 0 ? project.devices[index] : {}),
+          ...incoming,
+          updatedAt: new Date().toISOString(),
+        };
+        if (index >= 0) project.devices[index] = merged;
+        else project.devices.push(merged);
+      }
+      project.updatedAt = new Date().toISOString();
+      persist();
+      return { success: true, project: publicProject(projectId) };
+    } catch (error) {
+      return fail(error);
+    }
+  });
+
+  ipcMain.handle('devices:remove', async (event, projectId, deviceIds) => {
+    try {
+      requireAdmin();
+      const data = database();
+      const project = data.projects.find((p) => p.id === projectId);
+      if (!project) throw new Error('项目不存在');
+      const ids = new Set(Array.isArray(deviceIds) ? deviceIds : [deviceIds]);
+      project.devices = project.devices.filter((d) => !ids.has(d.id));
+      project.issues = project.issues.map((issue) => ({
+        ...issue,
+        deviceIds: issue.deviceIds.filter((id) => !ids.has(id)),
+      }));
+      project.updatedAt = new Date().toISOString();
+      persist();
+      return { success: true, project: publicProject(projectId) };
+    } catch (error) {
+      return fail(error);
+    }
+  });
+
+  ipcMain.handle('devices:add-test-record', async (event, projectId, deviceId, record) => {
+    try {
+      const data = database();
+      const project = data.projects.find((p) => p.id === projectId);
+      if (!project) throw new Error('项目不存在');
+      const device = project.devices.find((d) => d.id === deviceId);
+      if (!device) throw new Error('设备不存在');
+      const created = { ...record, id: record.id == null ? Date.now() : record.id, createdAt: new Date().toISOString() };
+      device.testRecords.push(created);
+      device.updatedAt = new Date().toISOString();
+      persist();
+      return { success: true, device: publicDevice(projectId, deviceId), record: created };
+    } catch (error) {
+      return fail(error);
+    }
+  });
+
+  // 批量录入：产线一次导入几百条结果
+  ipcMain.handle('devices:bulk-add-test-records', async (event, projectId, rows) => {
+    try {
+      const data = database();
+      const project = data.projects.find((p) => p.id === projectId);
+      if (!project) throw new Error('项目不存在');
+      const bySn = new Map(project.devices.map((d) => [d.sn, d]));
+      const applied = [];
+      const skipped = [];
+      for (const row of Array.isArray(rows) ? rows : []) {
+        const device = bySn.get(String(row.sn || '').trim());
+        if (!device) {
+          skipped.push({ sn: row.sn, reason: '未找到该 SN' });
+          continue;
+        }
+        const created = {
+          id: Date.now() + applied.length,
+          testDate: row.testDate,
+          tester: row.tester,
+          result: row.result === '失败' ? '失败' : '通过',
+          notes: row.notes || '',
+          category: row.category === 'hardware' ? 'hardware' : row.category === 'software' ? 'software' : '',
+          versionId: row.versionId == null ? device.versionId : row.versionId,
+          deviceId: device.id,
+          createdAt: new Date().toISOString(),
+        };
+        device.testRecords.push(created);
+        device.updatedAt = new Date().toISOString();
+        applied.push({ sn: device.sn, deviceId: device.id });
+      }
+      if (applied.length) persist();
+      return { success: true, applied: applied.length, skipped, project: publicProject(projectId) };
+    } catch (error) {
+      return fail(error);
+    }
+  });
+
+  ipcMain.handle('batches:upsert', async (event, projectId, batches) => {
+    try {
+      const data = database();
+      const project = data.projects.find((p) => p.id === projectId);
+      if (!project) throw new Error('项目不存在');
+      const list = Array.isArray(batches) ? batches : [batches];
+      for (const incoming of list) {
+        if (!incoming || incoming.id == null) continue;
+        const index = project.batches.findIndex((b) => b.id === incoming.id);
+        if (index >= 0) project.batches[index] = { ...project.batches[index], ...incoming };
+        else project.batches.push(incoming);
+      }
+      project.updatedAt = new Date().toISOString();
+      persist();
+      return { success: true, project: publicProject(projectId) };
+    } catch (error) {
+      return fail(error);
+    }
+  });
+
+  ipcMain.handle('issues:upsert', async (event, projectId, issues) => {
+    try {
+      const data = database();
+      const project = data.projects.find((p) => p.id === projectId);
+      if (!project) throw new Error('项目不存在');
+      const list = Array.isArray(issues) ? issues : [issues];
+      for (const incoming of list) {
+        if (!incoming || incoming.id == null) continue;
+        const index = project.issues.findIndex((i) => i.id === incoming.id);
+        const merged = { ...(index >= 0 ? project.issues[index] : {}), ...incoming, updatedAt: new Date().toISOString() };
+        if (index >= 0) project.issues[index] = merged;
+        else project.issues.push(merged);
+      }
+      project.updatedAt = new Date().toISOString();
+      persist();
+      return { success: true, project: publicProject(projectId) };
+    } catch (error) {
+      return fail(error);
+    }
+  });
+
+  ipcMain.handle('issues:remove', async (event, projectId, issueId) => {
+    try {
+      requireAdmin();
+      const data = database();
+      const project = data.projects.find((p) => p.id === projectId);
+      if (!project) throw new Error('项目不存在');
+      project.issues = project.issues.filter((i) => i.id !== issueId);
+      project.updatedAt = new Date().toISOString();
+      persist();
+      return { success: true, project: publicProject(projectId) };
+    } catch (error) {
+      return fail(error);
+    }
   });
 
   // ---- 认证 ----
@@ -363,16 +533,38 @@ function register() {
     }
   });
 
-  ipcMain.handle('data:import-apply', async (event, incoming) => {
+  // 三人各自一台电脑时，导入不能整包覆盖——否则会把别人的数据冲掉。
+  // mode=replace 整包替换；mode=merge 按项目 id 合并（默认）。
+  ipcMain.handle('data:import-apply', async (event, incoming, mode) => {
     try {
       requireAdmin();
       const validation = store.validateImport(incoming);
       if (!validation.ok) throw new Error('备份结构不正确：' + validation.problems.join('；'));
       const data = database();
-      data.projects = validation.data.projects;
+      const strategy = mode === 'replace' ? 'replace' : 'merge';
+
+      if (strategy === 'replace') {
+        data.projects = validation.data.projects;
+      } else {
+        const incomingById = new Map(validation.data.projects.map((p) => [p.id, p]));
+        const merged = [];
+        for (const local of data.projects) {
+          const remote = incomingById.get(local.id);
+          if (!remote) {
+            merged.push(local);
+            continue;
+          }
+          merged.push(mergeProject(local, remote));
+          incomingById.delete(local.id);
+        }
+        // 本地没有的项目直接新增
+        for (const added of incomingById.values()) merged.push(added);
+        data.projects = merged;
+      }
+
       // 导入不覆盖本机账号体系，只合并项目数据，避免把自己锁在门外
       persist();
-      return { success: true, data: publicView() };
+      return { success: true, data: publicView(), mode: strategy };
     } catch (error) {
       return fail(error);
     }
@@ -393,6 +585,40 @@ function register() {
       return fail(error);
     }
   });
+}
+
+// 按实体 id 合并两个同名项目：保留双方独有的记录，同 id 取 updatedAt 较新的一方。
+// 这样三个人各自录入的测试记录能汇到一起，而不是互相覆盖。
+function mergeProject(local, remote) {
+  const pickNewer = (a, b) => {
+    const ta = String(a.updatedAt || a.createdAt || '');
+    const tb = String(b.updatedAt || b.createdAt || '');
+    return tb > ta ? { ...a, ...b } : { ...b, ...a };
+  };
+
+  const mergeList = (localList, remoteList) => {
+    const byId = new Map((localList || []).map((item) => [item.id, item]));
+    for (const item of remoteList || []) {
+      byId.set(item.id, byId.has(item.id) ? pickNewer(byId.get(item.id), item) : item);
+    }
+    return [...byId.values()];
+  };
+
+  const merged = pickNewer(local, remote);
+  merged.versions = mergeList(local.versions, remote.versions);
+  merged.batches = mergeList(local.batches, remote.batches);
+  merged.issues = mergeList(local.issues, remote.issues);
+  merged.testRecords = mergeList(local.testRecords, remote.testRecords);
+
+  // 设备里的测试记录也要合并，否则同一条设备只保留一方数据
+  const localDevices = new Map((local.devices || []).map((d) => [d.id, d]));
+  merged.devices = mergeList(local.devices, remote.devices).map((device) => {
+    const counterpart = localDevices.get(device.id);
+    if (!counterpart) return device;
+    return { ...device, testRecords: mergeList(counterpart.testRecords, device.testRecords) };
+  });
+
+  return merged;
 }
 
 function csvRow(values) {
