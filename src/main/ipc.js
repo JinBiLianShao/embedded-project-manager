@@ -108,6 +108,7 @@ function register() {
       const project = data.projects.find((p) => p.id === projectId);
       if (!project) throw new Error('项目不存在');
       const list = Array.isArray(devices) ? devices : [devices];
+      const touched = [];
       for (const incoming of list) {
         if (!incoming || incoming.id == null) continue;
         const index = project.devices.findIndex((d) => d.id === incoming.id);
@@ -118,10 +119,14 @@ function register() {
         };
         if (index >= 0) project.devices[index] = merged;
         else project.devices.push(merged);
+        touched.push(merged);
       }
+      if (!touched.length) return { success: true, devices: [] };
       project.updatedAt = new Date().toISOString();
       persist();
-      return { success: true, project: publicProject(projectId) };
+      // 只回传本次改动的设备。几千台设备时整项目回传约 500KB，
+      // 仅 IPC 序列化就要 20ms 以上，产线连续扫码录入会明显卡顿。
+      return { success: true, devices: touched };
     } catch (error) {
       return fail(error);
     }

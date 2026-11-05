@@ -57,6 +57,19 @@ function defaultData() {
   };
 }
 
+// normalizeData 每次保存都会跑，而 scryptSync 单次约 30ms。
+// 这里给出一个不含密码哈希的空管理员占位，只有在确实需要新建管理员时
+// 才调用 bootstrapAdmin() 真正算哈希，避免每次保存都白算一次。
+function adminPlaceholder() {
+  return {
+    username: DEFAULT_ADMIN,
+    passwordHash: '',
+    salt: '',
+    role: 'admin',
+    createdAt: new Date().toISOString(),
+  };
+}
+
 function emptyProject(id) {
   return {
     id,
@@ -99,10 +112,12 @@ function asArray(value) {
 }
 
 // 把任意来源（旧版本 data.json / 导入的备份）规整成当前 schema。
-// 只补字段、不猜内容：无法识别的字段原样丢弃，缺失的字段填默认值。
+// 已知字段按规则规整，未知字段原样保留（见 keepUnknown）。
+// 此函数在每次保存时都会执行，务必保持轻量。
 function normalizeData(raw) {
-  const base = defaultData();
-  if (!raw || typeof raw !== 'object') return base;
+  // 只在入参完全不可用时才构造默认数据（defaultData 内含一次 scrypt）。
+  // 正常保存路径不应触发它，否则每次写盘都会白算一次密码哈希。
+  if (!raw || typeof raw !== 'object') return defaultData();
 
   const users = {};
   if (raw.users && typeof raw.users === 'object') {
@@ -224,6 +239,8 @@ function normalizeData(raw) {
 
   // 没有管理员就永远无法登录。任何来源的数据（旧版、导入的备份、损坏恢复）
   // 只要缺少管理员账号，就补一个默认管理员，保证应用始终可用。
+  // 注意：已有管理员时绝不调用 bootstrapAdmin()，否则每次保存都要多算一次
+  // scrypt（约 30ms），几千台设备时会让保存明显变卡。
   const hasAdmin = Object.values(users).some((u) => u.role === 'admin');
   if (!hasAdmin) {
     users[DEFAULT_ADMIN] = bootstrapAdmin();
@@ -387,7 +404,13 @@ function validateImport(raw) {
     return { ok: false, problems: ['文件内容不是 JSON 对象'] };
   }
   if (!Array.isArray(raw.projects)) problems.push('缺少 projects 数组');
-  if (raw.users != null && typeof raw.users !== 'object') problems.push('users 不是对象');
+  // 数组的 typeof 同样是 'object'，必须显式排除，否则 users: [] 会绕过校验
+  if (raw.users != null && (typeof raw.users !== 'object' || Array.isArray(raw.users))) {
+    problems.push('users 不是对象');
+  }
+  if (raw.settings != null && (typeof raw.settings !== 'object' || Array.isArray(raw.settings))) {
+    problems.push('settings 不是对象');
+  }
   if (problems.length) return { ok: false, problems };
 
   const data = normalizeData(raw);

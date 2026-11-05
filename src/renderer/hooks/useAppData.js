@@ -501,10 +501,24 @@ export function useAppData(confirm) {
         notify('保存设备失败：' + response.error, 'error');
         return false;
       }
-      replaceProject(response.project);
+      // 主进程只回传本次改动的设备，就地合并进本地状态，
+      // 避免为了几台设备把整个项目重新拉一遍（2000 台约 500KB）。
+      const touched = response.devices || [];
+      if (touched.length) {
+        const byId = new Map(touched.map((d) => [d.id, d]));
+        setData((prev) => ({
+          ...prev,
+          projects: prev.projects.map((p) => {
+            if (p.id !== projectId) return p;
+            const existing = new Map(p.devices.map((d) => [d.id, d]));
+            for (const [id, dev] of byId) existing.set(id, dev);
+            return { ...p, devices: [...existing.values()] };
+          }),
+        }));
+      }
       return true;
     },
-    [notify, replaceProject]
+    [notify]
   );
 
   const removeDevices = useCallback(
